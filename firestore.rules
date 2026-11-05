@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+  function admin() {
+   return request.auth != null && request.auth.token.email == 'hijmjo@gmail.com'
+    && request.auth.token.email_verified == true
+    && request.auth.token.firebase.sign_in_provider == 'google.com';
+  }
+  function validQuote(d) {
+   return d.keys().hasAll(['id','originalText','originalLanguage','translationKo','translationEn','author','sourceTitle','sourceUrl','emotionTagIds','importedBig3Ids','status','copyrightStatus','createdAt','updatedAt'])
+    && d.keys().hasOnly(['id','originalText','originalLanguage','translationKo','translationEn','author','sourceTitle','sourceUrl','emotionTagIds','importedBig3Ids','status','copyrightStatus','createdAt','updatedAt'])
+    && d.originalText is string && d.originalText.size() > 0 && d.originalText.size() <= 20000
+    && d.originalLanguage is string && d.translationKo is string && d.translationEn is string
+    && d.author is string && d.sourceTitle is string && d.sourceUrl is string
+    && (d.sourceUrl == '' || d.sourceUrl.matches('https?://[^\\s]+'))
+    && d.emotionTagIds is list && d.emotionTagIds.size() <= 100
+    && d.importedBig3Ids is list && d.importedBig3Ids.hasOnly(['Balance','Dominance','Stimulance'])
+    && d.status in ['draft','published'] && d.copyrightStatus in ['unreviewed','approved','restricted']
+    && (d.status == 'draft' || (d.emotionTagIds.size() > 0 && d.copyrightStatus == 'approved'));
+  }
+  match /counselQuotes/{id} {
+   allow read: if admin() || (resource.data.status == 'published' && resource.data.copyrightStatus == 'approved');
+   allow create: if admin() && request.resource.data.id == id && validQuote(request.resource.data);
+   allow update: if admin() && request.resource.data.id == id && request.resource.data.createdAt == resource.data.createdAt && validQuote(request.resource.data);
+   allow delete: if admin();
+  }
+  match /counselTags/{id} {
+   allow read: if admin() || resource.data.isActive == true;
+   allow create, update: if admin() && request.resource.data.id == id
+    && request.resource.data.keys().hasOnly(['id','nameKo','nameEn','big3Ids','isActive','quoteCount'])
+    && request.resource.data.nameKo is string && request.resource.data.nameKo.size() > 0
+    && request.resource.data.nameEn is string && request.resource.data.isActive is bool
+    && request.resource.data.big3Ids is list && request.resource.data.big3Ids.hasOnly(['Balance','Dominance','Stimulance'])
+    && request.resource.data.quoteCount is int && request.resource.data.quoteCount >= 0;
+   allow delete: if admin() && resource.data.quoteCount == 0;
+  }
+  match /counselQuoteKeys/{id} {
+   allow read: if admin();
+   allow create, update: if admin() && request.resource.data.keys().hasOnly(['quoteId','active'])
+    && request.resource.data.quoteId is string && request.resource.data.active is bool;
+  }
+ }
+}

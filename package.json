@@ -1,0 +1,33 @@
+{
+  "name": "chileunyoung-counsel",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:rules": "node tests/firestore.rules.test.mjs"
+  },
+  "dependencies": {
+    "firebase": "^12.15.0",
+    "papaparse": "^5.5.3",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/papaparse": "^5.3.16",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "happy-dom": "^21.0.4",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12",
+    "vitest": "^5.0.3"
+  }
+}
