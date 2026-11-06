@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
@@ -24,6 +25,8 @@ import {
 import "./style.css";
 
 export function App() {
+  const [motion, setMotion] = useState<"forward" | "back" | null>(null);
+  const transitionRef = useRef<ViewTransition | null>(null);
   const [page, setPage] = useState(
       location.hash === "#admin" ? "admin" : "home",
     ),
@@ -86,19 +89,54 @@ export function App() {
       setBusy(false);
     }
   }
+  function changePage(next: string, prepare = () => {}) {
+    const direction =
+      page === "home" && next === "viewer"
+        ? "forward"
+        : page === "viewer" && next === "home"
+          ? "back"
+          : null;
+    transitionRef.current?.skipTransition();
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const update = () => {
+      flushSync(() => {
+        prepare();
+        setPage(next);
+      });
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    };
+    if (!direction || reduced || !document.startViewTransition) {
+      setMotion(reduced ? null : direction);
+      update();
+      return;
+    }
+    setMotion(null);
+    document.documentElement.dataset.pageDirection = direction;
+    const transition = document.startViewTransition(update);
+    transitionRef.current = transition;
+    void transition.finished
+      .catch(() => {})
+      .finally(() => {
+        if (transitionRef.current === transition) {
+          transitionRef.current = null;
+          delete document.documentElement.dataset.pageDirection;
+        }
+      });
+  }
   function navigate(next: string) {
     setError("");
     setNotice("");
-    setPage(next);
+    changePage(next);
     location.hash = next === "admin" ? "admin" : "";
-    window.scrollTo(0, 0);
   }
   function start() {
     const r = recommend(quotes, tags, selected);
-    setResults(r.quotes);
-    setFallback(r.fallback);
-    setPage("viewer");
-    window.scrollTo(0, 0);
+    changePage("viewer", () => {
+      setResults(r.quotes);
+      setFallback(r.fallback);
+    });
   }
   return (
     <>
@@ -155,194 +193,212 @@ export function App() {
           {notice}
         </div>
       )}
-      {loading ? (
-        <main className="empty" role="status">
-          문장을 불러오고 있어요.
-        </main>
-      ) : page === "admin" ? (
-        <main className="admin-shell">
-          {!admin ? (
-            <section className="login">
-              <p className="eyebrow">ADMIN</p>
-              <h1>문장을 돌보는 공간</h1>
-              <p>관리자 계정으로 로그인해 주세요.</p>
-              <p className="muted">{ADMIN_EMAIL}</p>
-              <button
-                disabled={!configured || busy}
-                className="primary"
-                onClick={() => void action(login)}
-              >
-                Google 계정으로 로그인 <span>↗</span>
-              </button>
-              {!configured && (
-                <p className="muted">Firebase 연결 설정을 기다리고 있어요.</p>
-              )}
-            </section>
-          ) : (
-            <Admin
-              quotes={quotes}
-              tags={tags}
-              busy={busy}
-              action={action}
-              refresh={refresh}
-              notify={setNotice}
-            />
-          )}
-        </main>
-      ) : page === "viewer" ? (
-        <>
-          <div className="viewer-toolbar">
-            <button className="text-button" onClick={() => navigate("home")}>
-              ← 감정 다시 선택
-            </button>
-            <span>{results.length}개의 문장</span>
-          </div>
-          {fallback && (
-            <p className="message">
-              정확히 일치하는 문장이 없어 관련된 감정의 문장을 골랐어요.
-            </p>
-          )}
-          {!results.length ? (
-            <main className="empty">
-              <h1>아직 어울리는 문장이 없어요.</h1>
-              <p>다른 감정을 골라 다시 만나볼까요?</p>
-              <button className="primary" onClick={() => navigate("home")}>
-                감정 선택하기
-              </button>
+      <div className="page-viewport">
+        <div
+          key={page}
+          className="page-stage"
+          data-motion={motion || undefined}
+          onAnimationEnd={() => setMotion(null)}
+        >
+          {loading ? (
+            <main className="empty" role="status">
+              문장을 불러오고 있어요.
             </main>
-          ) : (
-            <main className="reading">
-              {results.map((q, i) => (
-                <article className="quote-page" key={q.id}>
-                  <div className="quote-number">
-                    {String(i + 1).padStart(2, "0")}{" "}
-                    <span>/ {String(results.length).padStart(2, "0")}</span>
-                  </div>
-                  <div>
-                    <p
-                      className="quote-text"
-                      lang={q.originalLanguage || undefined}
-                    >
-                      {q.originalText}
-                    </p>
-                    {q.translationKo && q.translationKo !== q.originalText && (
-                      <p className="translation">{q.translationKo}</p>
-                    )}
-                    {(q.author || q.sourceTitle) && (
-                      <p className="source">
-                        {[q.author, q.sourceTitle].filter(Boolean).join(" · ")}
-                      </p>
-                    )}
-                    {/^https?:\/\//.test(q.sourceUrl) && (
-                      <a
-                        className="text-button"
-                        href={q.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        출처 보기 ↗
-                      </a>
-                    )}
-                  </div>
-                  <div className="reading-bottom">
-                    <div className="small-tags">
-                      {q.emotionTagIds
-                        .map((id) => tags.find((t) => t.id === id))
-                        .filter((t): t is Tag => !!t && t.isActive)
-                        .map((t) => (
-                          <span key={t.id}>{t.nameKo}</span>
-                        ))}
-                    </div>
-                    <span className="muted">
-                      {i < results.length - 1
-                        ? "아래로 내려 다음 문장 만나기 ↓"
-                        : "오늘의 문장은 여기까지예요."}
-                    </span>
-                  </div>
-                </article>
-              ))}
-            </main>
-          )}
-        </>
-      ) : (
-        <main>
-          <section className="hero">
-            <p className="eyebrow">칠은영 상담소</p>
-            <h1>
-              지금 어떤 감정을
-              <br />
-              느끼고 있나요?
-            </h1>
-            <p className="intro">
-              잠시 마음을 들여다봐요.
-              <br />
-              지금의 당신에게 어울리는 문장을 함께 찾아볼게요.
-            </p>
-          </section>
-          <section className="selection" aria-labelledby="feel-label">
-            <div className="section-heading">
-              <h2 id="feel-label">마음에 가까운 감정을 골라 주세요.</h2>
-              <span className="muted">여러 개를 선택해도 괜찮아요.</span>
-            </div>
-            <div className="tag-grid">
-              {tags
-                .filter((t) => t.isActive)
-                .sort((a, b) => a.nameKo.localeCompare(b.nameKo, "ko"))
-                .map((t) => (
+          ) : page === "admin" ? (
+            <main className="admin-shell">
+              {!admin ? (
+                <section className="login">
+                  <p className="eyebrow">ADMIN</p>
+                  <h1>문장을 돌보는 공간</h1>
+                  <p>관리자 계정으로 로그인해 주세요.</p>
+                  <p className="muted">{ADMIN_EMAIL}</p>
                   <button
-                    key={t.id}
-                    className={
-                      "chip " + (selected.includes(t.id) ? "selected" : "")
-                    }
-                    aria-pressed={selected.includes(t.id)}
-                    onClick={() =>
-                      setSelected((s) =>
-                        s.includes(t.id)
-                          ? s.filter((id) => id !== t.id)
-                          : [...s, t.id],
+                    disabled={!configured || busy}
+                    className="primary"
+                    onClick={() => void action(login)}
+                  >
+                    Google 계정으로 로그인 <span>↗</span>
+                  </button>
+                  {!configured && (
+                    <p className="muted">
+                      Firebase 연결 설정을 기다리고 있어요.
+                    </p>
+                  )}
+                </section>
+              ) : (
+                <Admin
+                  quotes={quotes}
+                  tags={tags}
+                  busy={busy}
+                  action={action}
+                  refresh={refresh}
+                  notify={setNotice}
+                />
+              )}
+            </main>
+          ) : page === "viewer" ? (
+            <>
+              <div className="viewer-toolbar">
+                <button
+                  className="text-button"
+                  onClick={() => navigate("home")}
+                >
+                  ← 감정 다시 선택
+                </button>
+                <span>{results.length}개의 문장</span>
+              </div>
+              {fallback && (
+                <p className="message">
+                  정확히 일치하는 문장이 없어 관련된 감정의 문장을 골랐어요.
+                </p>
+              )}
+              {!results.length ? (
+                <main className="empty">
+                  <h1>아직 어울리는 문장이 없어요.</h1>
+                  <p>다른 감정을 골라 다시 만나볼까요?</p>
+                  <button className="primary" onClick={() => navigate("home")}>
+                    감정 선택하기
+                  </button>
+                </main>
+              ) : (
+                <main className="reading">
+                  {results.map((q, i) => (
+                    <article className="quote-page" key={q.id}>
+                      <div className="quote-number">
+                        {String(i + 1).padStart(2, "0")}{" "}
+                        <span>/ {String(results.length).padStart(2, "0")}</span>
+                      </div>
+                      <div>
+                        <p
+                          className="quote-text"
+                          lang={q.originalLanguage || undefined}
+                        >
+                          {q.originalText}
+                        </p>
+                        {q.translationKo &&
+                          q.translationKo !== q.originalText && (
+                            <p className="translation">{q.translationKo}</p>
+                          )}
+                        {(q.author || q.sourceTitle) && (
+                          <p className="source">
+                            {[q.author, q.sourceTitle]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        )}
+                        {/^https?:\/\//.test(q.sourceUrl) && (
+                          <a
+                            className="text-button"
+                            href={q.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            출처 보기 ↗
+                          </a>
+                        )}
+                      </div>
+                      <div className="reading-bottom">
+                        <div className="small-tags">
+                          {q.emotionTagIds
+                            .map((id) => tags.find((t) => t.id === id))
+                            .filter((t): t is Tag => !!t && t.isActive)
+                            .map((t) => (
+                              <span key={t.id}>{t.nameKo}</span>
+                            ))}
+                        </div>
+                        <span className="muted">
+                          {i < results.length - 1
+                            ? "아래로 내려 다음 문장 만나기 ↓"
+                            : "오늘의 문장은 여기까지예요."}
+                        </span>
+                      </div>
+                    </article>
+                  ))}
+                </main>
+              )}
+            </>
+          ) : (
+            <main>
+              <section className="hero">
+                <p className="eyebrow">칠은영 상담소</p>
+                <h1>
+                  지금 어떤 감정을
+                  <br />
+                  느끼고 있나요?
+                </h1>
+                <p className="intro">
+                  잠시 마음을 들여다봐요.
+                  <br />
+                  지금의 당신에게 어울리는 문장을 함께 찾아볼게요.
+                </p>
+              </section>
+              <section className="selection" aria-labelledby="feel-label">
+                <div className="section-heading">
+                  <h2 id="feel-label">마음에 가까운 감정을 골라 주세요.</h2>
+                  <span className="muted">여러 개를 선택해도 괜찮아요.</span>
+                </div>
+                <div className="tag-grid">
+                  {tags
+                    .filter((t) => t.isActive)
+                    .sort((a, b) => a.nameKo.localeCompare(b.nameKo, "ko"))
+                    .map((t) => (
+                      <button
+                        key={t.id}
+                        className={
+                          "chip " + (selected.includes(t.id) ? "selected" : "")
+                        }
+                        aria-pressed={selected.includes(t.id)}
+                        onClick={() =>
+                          setSelected((s) =>
+                            s.includes(t.id)
+                              ? s.filter((id) => id !== t.id)
+                              : [...s, t.id],
+                          )
+                        }
+                      >
+                        {t.nameKo}
+                        {selected.includes(t.id) && (
+                          <span aria-hidden="true">✓</span>
+                        )}
+                      </button>
+                    ))}
+                </div>
+                {!tags.filter((t) => t.isActive).length && (
+                  <p className="muted">
+                    아직 등록된 감정이 없어요. 관리자가 첫 문장을 준비하고
+                    있어요.
+                  </p>
+                )}
+                <div className="selection-footer">
+                  <span className="muted" aria-live="polite">
+                    {selected.length
+                      ? `${selected.length}개의 감정을 골랐어요.`
+                      : "천천히, 지금의 마음을 골라 보세요."}
+                  </span>
+                  <button
+                    className="primary"
+                    disabled={
+                      !selected.some((id) =>
+                        tags.some((t) => t.id === id && t.isActive),
                       )
                     }
+                    onClick={start}
                   >
-                    {t.nameKo}
-                    {selected.includes(t.id) && (
-                      <span aria-hidden="true">✓</span>
-                    )}
+                    나에게 맞는 문장 만나기 <span>↗</span>
                   </button>
-                ))}
-            </div>
-            {!tags.filter((t) => t.isActive).length && (
-              <p className="muted">
-                아직 등록된 감정이 없어요. 관리자가 첫 문장을 준비하고 있어요.
-              </p>
-            )}
-            <div className="selection-footer">
-              <span className="muted" aria-live="polite">
-                {selected.length
-                  ? `${selected.length}개의 감정을 골랐어요.`
-                  : "천천히, 지금의 마음을 골라 보세요."}
-              </span>
-              <button
-                className="primary"
-                disabled={
-                  !selected.some((id) =>
-                    tags.some((t) => t.id === id && t.isActive),
-                  )
-                }
-                onClick={start}
-              >
-                나에게 맞는 문장 만나기 <span>↗</span>
-              </button>
-            </div>
-          </section>
-          <section className="closing">
-            <span>마음을 위한 작은 여백</span>
-            <p>
-              정답을 찾기보다,
-              <br />내 마음을 알아가는 시간.
-            </p>
-          </section>
-        </main>
-      )}
+                </div>
+              </section>
+              <section className="closing">
+                <span>마음을 위한 작은 여백</span>
+                <p>
+                  정답을 찾기보다,
+                  <br />내 마음을 알아가는 시간.
+                </p>
+              </section>
+            </main>
+          )}
+        </div>
+      </div>
       <footer>
         <span>칠은영 상담소</span>
         <span>당신의 마음에, 한 문장.</span>

@@ -760,7 +760,66 @@ legend {
     font-size: 30px;
   }
 }
+.page-viewport {
+  overflow-x: clip;
+}
+.page-stage[data-motion="forward"] {
+  animation: page-enter-forward 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.page-stage[data-motion="back"] {
+  animation: page-enter-back 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+@keyframes page-enter-forward {
+  from {
+    transform: translateX(100vw);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes page-enter-back {
+  from {
+    transform: translateX(-100vw);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes page-exit-forward {
+  to {
+    transform: translateX(-100vw);
+  }
+}
+@keyframes page-exit-back {
+  to {
+    transform: translateX(100vw);
+  }
+}
+html[data-page-direction]::view-transition-old(root),
+html[data-page-direction]::view-transition-new(root) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+  animation-fill-mode: both;
+  mix-blend-mode: normal;
+}
+html[data-page-direction="forward"]::view-transition-old(root) {
+  animation-name: page-exit-forward;
+}
+html[data-page-direction="forward"]::view-transition-new(root) {
+  animation-name: page-enter-forward;
+}
+html[data-page-direction="back"]::view-transition-old(root) {
+  animation-name: page-exit-back;
+}
+html[data-page-direction="back"]::view-transition-new(root) {
+  animation-name: page-enter-back;
+}
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
   *,
   *::before,
   *::after {
