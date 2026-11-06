@@ -15,6 +15,7 @@
   letter-spacing: -0.04em;
   --primary: #255a46;
   --border: #cbd4d2;
+  --border-soft: #e5eae9;
   --soft: #f6f5f1;
   --body: #596b64;
   --foreground: #122b22;
@@ -331,8 +332,10 @@ footer span + span {
 }
 .quote-page {
   min-height: calc(100svh - 64px);
-  padding: 48px 0 36px;
-  border-bottom: 1px solid var(--border);
+  margin: 24px 0;
+  padding: 48px 32px 36px;
+  border: 1px solid var(--border-soft);
+  border-radius: 20px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -687,7 +690,7 @@ legend {
     flex-direction: column;
   }
   .quote-page {
-    padding-block: 32px;
+    padding: 32px 20px;
     gap: 36px;
   }
   .viewer-toolbar {
